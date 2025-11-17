@@ -40,9 +40,42 @@
 #include "mutilate.h"
 #include "util.h"
 
+
+#include "monloop.h"
+#include <iostream>
+
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 
 using namespace std;
+
+
+
+
+class AppData {
+private:
+  int lambda_;
+public:
+  AppData() : lambda_(0) {}
+  void display() { std::cout << lambda_ << std::endl; }
+};
+
+long display_cmd(monloop_t *ml, int args) {
+  AppData *ad = static_cast<AppData *>(ml->data);
+  ad->display();
+  return MONLOOP_CMD_OK;
+}
+
+monloop_t monloop;
+
+monloop_cmddesc_t monloop_cmds[] = {
+  { .name = "help", .usage = "print help for monitor commands", .cmd = monloop_help_cmd },
+  { .name = "display",  .usage = "display", .cmd = display_cmd },
+  { NULL, NULL, NULL }
+};
+
+
+
+
 
 gengetopt_args_info args;
 char random_char[2 * 1024 * 1024];  // Buffer used to generate random values.
@@ -619,7 +652,7 @@ int main(int argc, char **argv) {
       printf(" %8d\n", q);
     }
   } else {
-    go(servers, options, stats);
+      go(servers, options, stats);
   }
 
   if (!args.scan_given && !args.loadonly_given) {
@@ -1025,6 +1058,13 @@ void do_mutilate(const vector<string>& servers, options_t& options,
     conn->start(); // Kick the Connection into motion.
   }
 
+
+#if 1
+  void *exit_status;
+  AppData *mdata = new AppData;
+  monloop_start(&monloop, mdata, STDIN_FILENO, stderr, false);
+#endif
+
   //  V("Start = %f", start);
 
   // Main event loop.
@@ -1050,6 +1090,14 @@ void do_mutilate(const vector<string>& servers, options_t& options,
 
   if (master && !args.scan_given && !args.search_given)
     V("stopped at %f  options.time = %d", get_time(), options.time);
+
+
+#if 0
+  monloop_join(&monloop, &exit_status);
+  long rc = (long)exit_status;
+  std::cout << "monloop exited with rc=" <<  rc << std::endl;
+#endif
+
 
   // Tear-down and accumulate stats.
   for (Connection *conn: connections) {
