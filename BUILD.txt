@@ -1,0 +1,6 @@
+## run the following after compiling monloop.o
+
+python2.7 ~/.local/bin/scons
+g++ -o mutilate monloop.o mutilate.o cmdline.o log.o distributions.o util.o Connection.o Protocol.o Generator.o -L/opt/local/lib -levent -lpthread -lrt -lzmq
+
+
