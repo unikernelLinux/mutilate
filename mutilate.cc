@@ -51,27 +51,79 @@ using namespace std;
 
 
 
+
+
+
+
+
+
+
+
+
+
 class AppData {
 private:
   int lambda_;
+  int threads_;
+  vector<Connection*> connections_;
+  vector<ConnectionStats*> stats_;
 public:
   AppData() : lambda_(0) {}
+  AppData(vector<Connection*> connections, vector<ConnectionStats*> stats) { connections_ = connections; stats_ = stats;}
+
+  void set_connections(vector<Connection*> connections) {
+   for (Connection *conn : connections) { connections_.push_back(conn); }
+  }
+  void set_stats(ConnectionStats *cs) { stats_.push_back(cs); }
+  void increment_iagen_shape(int val) {
+    for (Connection *conn : connections_) { conn->increment_ia_shape(val); }
+  }
   void display() { std::cout << lambda_ << std::endl; }
+  void display_lambdas() {
+    for (Connection *conn : connections_) { printf("threads: %d -- qps: %d -- lambda: %f -- shape: %f \n", conn->options.threads, conn->options.qps, conn->options.lambda, conn->get_ia_shape()); }
+    for (ConnectionStats *cs : stats_) { printf("stats qps: %ld \n", cs->gets + cs->sets); }
+  }
 };
 
 long display_cmd(monloop_t *ml, int args) {
   AppData *ad = static_cast<AppData *>(ml->data);
-  ad->display();
+//  ad->display();
+  ad->display_lambdas();
+  return MONLOOP_CMD_OK;
+}
+
+long add_cmd(monloop_t *ml, int args) {
+  AppData *ad = static_cast<AppData *>(ml->data);
+  if (args == 0) {
+    ML_PRINT(ml, "%s", "USAGE: add <shape_delta>\n");
+    return MONLOOP_CMD_FAILED;
+  }
+  char *argstr = &(ml->line[args]);
+  int val = atoi(argstr);
+  ad->increment_iagen_shape(val);
   return MONLOOP_CMD_OK;
 }
 
 monloop_t monloop;
-
+AppData *mdata;
 monloop_cmddesc_t monloop_cmds[] = {
   { .name = "help", .usage = "print help for monitor commands", .cmd = monloop_help_cmd },
   { .name = "display",  .usage = "display", .cmd = display_cmd },
+  { .name = "add", .usage = "add <lambda_delta>", .cmd = add_cmd },
   { NULL, NULL, NULL }
 };
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -140,6 +192,25 @@ static bool s_send (zmq::socket_t &socket, const std::string &string) {
   return socket.send(message);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /*
  * Agent protocol
  *
@@ -195,13 +266,23 @@ static bool s_send (zmq::socket_t &socket, const std::string &string) {
  */
 
 void agent() {
+
+  printf("***** HERE IN AGENT ***** \n");
+
+
   zmq::context_t context(1);
 
   zmq::socket_t socket(context, ZMQ_REP);
   socket.bind((string("tcp://*:")+string(args.agent_port_arg)).c_str());
 
-  while (true) {
-    zmq::message_t request;
+#if 1
+  mdata = new AppData();
+  monloop_start(&monloop, mdata, STDIN_FILENO, stderr, false);
+  printf("monloop started.. \n");
+#endif
+
+   while (true) {
+   zmq::message_t request;
 
     socket.recv(&request);
 
@@ -252,6 +333,7 @@ void agent() {
     as.start = stats.start;
     as.stop = stats.stop;
     as.skips = stats.skips;
+    printf("agent stats gets, sets: %ld %ld\n", as.gets, as.sets);
 
     string req = s_recv(socket);
     //    V("req = %s", req.c_str());
@@ -340,6 +422,7 @@ void finish_agent(ConnectionStats &stats) {
     memcpy(&as, message.data(), sizeof(as));
     stats.accumulate(as);
   }
+
 }
 
 /*
@@ -469,6 +552,32 @@ static void crash_handler(int sig) {
   signal(sig, SIG_DFL);
   raise(sig);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 int main(int argc, char **argv) {
   signal(SIGSEGV, crash_handler);
@@ -713,6 +822,25 @@ int main(int argc, char **argv) {
   cmdline_parser_free(&args);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 void go(const vector<string>& servers, options_t& options,
         ConnectionStats &stats
 #ifdef HAVE_LIBZMQ
@@ -726,6 +854,9 @@ void go(const vector<string>& servers, options_t& options,
 #endif
 
   if (options.threads > 1) {
+    printf("here threads > 1\n");
+
+
     pthread_t pt[options.threads];
     struct thread_data td[options.threads];
 #ifdef __clang__
@@ -820,10 +951,23 @@ void go(const vector<string>& servers, options_t& options,
 #endif
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
 void* thread_main(void *arg) {
   struct thread_data *td = (struct thread_data *) arg;
 
   ConnectionStats *cs = new ConnectionStats();
+  mdata->set_stats(cs);
 
   do_mutilate(*td->servers, *td->options, *cs, td->master
 #ifdef HAVE_LIBZMQ
@@ -833,6 +977,19 @@ void* thread_main(void *arg) {
 
   return cs;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void do_mutilate(const vector<string>& servers, options_t& options,
                  ConnectionStats& stats, bool master
@@ -1058,12 +1215,10 @@ void do_mutilate(const vector<string>& servers, options_t& options,
     conn->start(); // Kick the Connection into motion.
   }
 
-
-#if 1
-  void *exit_status;
-  AppData *mdata = new AppData;
-  monloop_start(&monloop, mdata, STDIN_FILENO, stderr, false);
-#endif
+  if (args.agentmode_given) {
+    printf("**********\n");
+    mdata->set_connections(connections);
+  }
 
   //  V("Start = %f", start);
 
@@ -1088,15 +1243,9 @@ void do_mutilate(const vector<string>& servers, options_t& options,
     else break;
   }
 
-  if (master && !args.scan_given && !args.search_given)
+  if (master && !args.scan_given && !args.search_given) {
     V("stopped at %f  options.time = %d", get_time(), options.time);
-
-
-#if 0
-  monloop_join(&monloop, &exit_status);
-  long rc = (long)exit_status;
-  std::cout << "monloop exited with rc=" <<  rc << std::endl;
-#endif
+  }
 
 
   // Tear-down and accumulate stats.

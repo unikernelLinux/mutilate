@@ -119,6 +119,8 @@ private:
   double lambda;
 };
 
+
+
 class GPareto : public Generator {
 public:
   GPareto(double _loc = 0.0, double _scale = 1.0, double _shape = 1.0) :
@@ -137,10 +139,22 @@ public:
     else scale = (1 - shape) / lambda - (1 - shape) * loc;
   }
 
+  virtual double get_shape() {
+    //printf("%f %f \n", scale, shape);
+    return shape;
+  }
+
+  virtual void increment_shape(int val) {
+    shape = shape + val;
+  }
+
 private:
   double loc /* mu */;
   double scale /* sigma */, shape /* k */;
 };
+
+
+
 
 class GEV : public Generator {
 public:
