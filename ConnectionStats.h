@@ -118,8 +118,16 @@ class ConnectionStats {
     get_misses += as.get_misses;
     skips += as.skips;
 
-    start = as.start;
-    stop = as.stop;
+    // start/stop must span the full concurrent window across the master
+    // and every agent, not just whichever one this happened to be called
+    // for last -- get_qps() divides (gets+sets) by (stop-start), so a
+    // last-write-wins assignment here silently corrupts the aggregate QPS
+    // for any multi-agent run. By the time finish_agent() (the only caller
+    // of this overload) runs, the master's own do_mutilate() has already
+    // set start/stop on this object, so it's always valid here -- just
+    // take the earliest start and latest stop across it and every agent.
+    start = min(start, as.start);
+    stop = max(stop, as.stop);
   }
 
   static void print_header() {
