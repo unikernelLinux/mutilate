@@ -66,7 +66,14 @@ bool ProtocolAscii::handle_response(evbuffer *input, bool &done) {
       read_state = WAITING_FOR_GET;
       done = true;
     } else if (!strncmp(buf, "VALUE", 5)) {
-      sscanf(buf, "VALUE %*s %*d %d", &len);
+      // sscanf's return value must be checked: on a malformed/unexpected
+      // VALUE line it wouldn't assign len at all, leaving it uninitialized
+      // -- data_length would then be garbage, and WAITING_FOR_GET_DATA
+      // below would wait for a nonsensical number of bytes (hang or
+      // desync the whole connection) instead of failing loudly here.
+      if (sscanf(buf, "VALUE %*s %*d %d", &len) != 1) {
+        DIE("Malformed VALUE line: %s", buf);
+      }
 
       // FIXME: check key name to see if it corresponds to the op at
       // the head of the op queue?  This will be necessary to
@@ -171,14 +178,19 @@ int ProtocolBinary::set_request(const char* key, const char* value, int len) {
  */
 bool ProtocolBinary::handle_response(evbuffer *input, bool &done) {
   // Read the first 24 bytes as a header
-  int length = evbuffer_get_length(input);
+  size_t length = evbuffer_get_length(input);
   if (length < 24) return false;
   binary_header_t* h =
           reinterpret_cast<binary_header_t*>(evbuffer_pullup(input, 24));
   assert(h);
 
-  // Not whole response
-  int targetLen = 24 + ntohl(h->body_len);
+  // Keep this in unsigned arithmetic throughout: body_len comes straight
+  // off the wire, and computing targetLen as a signed int let a large
+  // body_len (a malformed/corrupted response) overflow it negative, which
+  // would then implicitly convert back to a huge size_t wherever targetLen
+  // was subsequently used (e.g. evbuffer_drain below) instead of failing
+  // predictably.
+  size_t targetLen = 24 + (size_t) ntohl(h->body_len);
   if (length < targetLen) return false;
 
   // If something other than success, count it as a miss

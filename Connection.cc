@@ -74,6 +74,7 @@ Connection::~Connection() {
   delete keygen;
   delete keysize;
   delete valuesize;
+  delete prot;
 }
 
 /**
@@ -179,6 +180,7 @@ void Connection::issue_set(const char* key, const char* value, int length,
   else op.start_time = now;
 #endif
 
+  op.key = string(key);
   op.type = Operation::SET;
   op_queue.push(op);
 

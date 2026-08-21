@@ -14,7 +14,9 @@ class Protocol {
 public:
   Protocol(options_t _opts, Connection* _conn, bufferevent* _bev):
     opts(_opts), conn(_conn), bev(_bev) {};
-  ~Protocol() {};
+  // Must be virtual: Connection deletes ProtocolAscii/ProtocolBinary
+  // instances through a Protocol* base pointer.
+  virtual ~Protocol() {};
 
   virtual bool setup_connection_w() = 0;
   virtual bool setup_connection_r(evbuffer* input) = 0;

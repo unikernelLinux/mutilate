@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <inttypes.h>
+#include <limits>
 #include <vector>
 
 #ifdef USE_ADAPTIVE_SAMPLER
@@ -29,7 +30,13 @@ class ConnectionStats {
    get_sampler(200), set_sampler(200), op_sampler(100),
 #endif
    rx_bytes(0), tx_bytes(0), gets(0), sets(0),
-   get_misses(0), skips(0), sampling(_sampling) {}
+   get_misses(0), skips(0),
+   // Sentinels so accumulate() can always take min(start)/max(stop) without
+   // needing to know whether this is the first thing merged into a freshly
+   // constructed (aggregate) ConnectionStats -- any real wall-clock
+   // timestamp from get_time() will beat these on the first accumulate().
+   start(std::numeric_limits<double>::max()), stop(0.0),
+   sampling(_sampling) {}
 
 #ifdef USE_ADAPTIVE_SAMPLER
   AdaptiveSampler<Operation> get_sampler;
@@ -106,8 +113,14 @@ class ConnectionStats {
     get_misses += cs.get_misses;
     skips += cs.skips;
 
-    start = cs.start;
-    stop = cs.stop;
+    // Same fix as accumulate(const AgentStats&) below: this is called once
+    // per local thread in go()'s pthread_join loop when options.threads >
+    // 1, so a last-write-wins assignment here would silently corrupt
+    // get_qps() to reflect only whichever thread happened to be joined
+    // last. The constructor's start/stop sentinels make min/max safe here
+    // regardless of whether this is the first thread merged in or not.
+    start = min(start, cs.start);
+    stop = max(stop, cs.stop);
   }
 
   void accumulate(const AgentStats &as) {

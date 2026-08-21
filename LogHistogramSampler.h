@@ -36,17 +36,26 @@ public:
 
   void sample(double s) {
     assert(s >= 0);
-    size_t bin = log(s)/log(_POW);
+    // log_bin is computed and clamped as a double before ever converting to
+    // size_t: for s == 0 (a legitimate zero-latency sample), log(s) is
+    // -inf, and converting a negative/infinite/NaN double straight to an
+    // unsigned type is undefined behavior in C++ -- doing the conversion
+    // only after confirming log_bin is finite and in range avoids that
+    // regardless of what s turns out to be.
+    double log_bin = log(s) / log(_POW);
 
     sum += s;
     sum_sq += s*s;
 
     //    I("%f", sum);
 
-    if ((int64_t) bin < 0) {
+    size_t bin;
+    if (!(log_bin >= 0)) {   // catches -inf and NaN too, not just negatives
       bin = 0;
-    } else if (bin >= bins.size()) {
+    } else if (log_bin >= (double) bins.size()) {
       bin = bins.size() - 1;
+    } else {
+      bin = (size_t) log_bin;
     }
 
     bins[bin]++;

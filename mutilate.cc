@@ -1028,6 +1028,11 @@ void do_mutilate(const vector<string>& servers, options_t& options,
   event_base_free(base);
 }
 
+static void safe_strcpy(char *dst, const char *src, size_t dst_size) {
+  strncpy(dst, src, dst_size - 1);
+  dst[dst_size - 1] = '\0';
+}
+
 void args_to_options(options_t* options) {
   //  bzero(options, sizeof(options_t));
   options->connections = args.connections_arg;
@@ -1066,21 +1071,21 @@ void args_to_options(options_t* options) {
   options->sasl = args.username_given;
 
   if (args.password_given)
-    strcpy(options->password, args.password_arg);
+    safe_strcpy(options->password, args.password_arg, sizeof(options->password));
   else
-    strcpy(options->password, "");
+    options->password[0] = '\0';
 
   if (args.username_given)
-    strcpy(options->username, args.username_arg);
+    safe_strcpy(options->username, args.username_arg, sizeof(options->username));
   else
-    strcpy(options->username, "");
+    options->username[0] = '\0';
 
   D("options->records = %d", options->records);
 
   if (!options->records) options->records = 1;
-  strcpy(options->keysize, args.keysize_arg);
+  safe_strcpy(options->keysize, args.keysize_arg, sizeof(options->keysize));
   //  options->keysize = args.keysize_arg;
-  strcpy(options->valuesize, args.valuesize_arg);
+  safe_strcpy(options->valuesize, args.valuesize_arg, sizeof(options->valuesize));
   //  options->valuesize = args.valuesize_arg;
   options->update = args.update_arg;
   options->time = args.time_arg;
@@ -1089,7 +1094,7 @@ void args_to_options(options_t* options) {
   options->no_nodelay = args.no_nodelay_given;
   options->noload = args.noload_given;
   options->iadist = get_distribution(args.iadist_arg);
-  strcpy(options->ia, args.iadist_arg);
+  safe_strcpy(options->ia, args.iadist_arg, sizeof(options->ia));
   options->warmup = args.warmup_given ? args.warmup_arg : 0;
   options->oob_thread = false;
   options->skip = args.skip_given;
