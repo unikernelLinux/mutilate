@@ -6,9 +6,9 @@ env = Environment(ENV = os.environ)
 
 env['HAVE_POSIX_BARRIER'] = True
 
-env.Append(CPPPATH = ['/usr/include', '/usr/local/include', '/opt/local/include'])
+env.Append(CPPPATH = ['/usr/include', '/usr/local/include'])
 env.Append(LIBPATH = ['/opt/local/lib'])
-env.Append(CCFLAGS = '-std=c++11 -D_GNU_SOURCE')
+env.Append(CXXFLAGS = ' -O3 -std=c++11')
 if sys.platform == 'darwin':
     env['CC']  = 'clang'
     env['CXX'] = 'clang++'
@@ -37,14 +37,14 @@ if not conf.CheckFunc('pthread_barrier_init'):
 
 env = conf.Finish()
 
-env.Append(CFLAGS = ' -O3 -Wall -g')
-env.Append(CPPFLAGS = ' -O3 -Wall -g')
+env.Append(CFLAGS = ' -O0 -MD -MP')
+env.Append(CPPFLAGS = ' -Wall -g -D_GNU_SOURCE')
 env.Append(LINKFLAGS = ' -rdynamic')  # so backtrace_symbols_fd() can resolve our own symbols
 
 env.Command(['cmdline.cc', 'cmdline.h'], 'cmdline.ggo', 'gengetopt < $SOURCE')
 
 src = Split("""mutilate.cc cmdline.cc log.cc distributions.cc util.cc
-               Connection.cc Protocol.cc Generator.cc""")
+               Connection.cc Protocol.cc Generator.cc monloop.c""")
 
 if not env['HAVE_POSIX_BARRIER']: # USE_POSIX_BARRIER:
     src += ['barrier.cc']
