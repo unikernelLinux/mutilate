@@ -47,19 +47,6 @@
 
 using namespace std;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 class AppData {
 private:
   int lambda_;
@@ -111,22 +98,6 @@ monloop_cmddesc_t monloop_cmds[] = {
   { .name = "add", .usage = "add <lambda_delta>", .cmd = add_cmd },
   { NULL, NULL, NULL }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 gengetopt_args_info args;
 char random_char[2 * 1024 * 1024]; // Buffer used to generate random values.
@@ -192,25 +163,6 @@ static bool s_send(zmq::socket_t &socket, const std::string &string) {
 
   return socket.send(message, zmq::send_flags::none).value() == string.size();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * Agent protocol
@@ -566,32 +518,6 @@ static void crash_handler(int sig) {
   signal(sig, SIG_DFL);
   raise(sig);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 int main(int argc, char **argv) {
   signal(SIGSEGV, crash_handler);
@@ -985,7 +911,8 @@ void *thread_main(void *arg) {
   struct thread_data *td = (struct thread_data *)arg;
 
   ConnectionStats *cs = new ConnectionStats();
-  mdata->set_stats(cs);
+  if (mdata)
+    mdata->set_stats(cs);
 
   do_mutilate(*td->servers, *td->options, *cs, td->master
 #ifdef HAVE_LIBZMQ
