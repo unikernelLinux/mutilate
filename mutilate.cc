@@ -76,6 +76,22 @@ public:
     std::lock_guard<std::mutex> lock(mutex_);
     stats_.push_back(cs);
   }
+  // Each benchmark invocation (one round-trip through agent()'s loop) tears
+  // down and `delete`s its own Connection/ConnectionStats objects at the
+  // end (see do_mutilate()'s teardown loop) -- but set_connections()/
+  // set_stats() only ever append, so without an explicit reset between
+  // rounds, connections_/stats_ keep accumulating pointers to already-freed
+  // objects from every prior benchmark call in this process's lifetime.
+  // The next "add"/"display" command then walks those dangling pointers
+  // too -- a use-after-free that segfaulted every agent at the start of
+  // the second iteration, right after the first iteration's connections
+  // were torn down. Call this once per benchmark invocation, before the
+  // new round's threads start populating these vectors again.
+  void clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    connections_.clear();
+    stats_.clear();
+  }
   void increment_iagen_shape(int val) {
     std::lock_guard<std::mutex> lock(mutex_);
     for (Connection *conn : connections_) { conn->increment_ia_shape(val); }
@@ -288,6 +304,12 @@ void agent() {
       pthread_barrier_init(&barrier, NULL, options.threads);
 
     ConnectionStats stats;
+
+    // Reset before this round's worker threads start populating
+    // connections_/stats_ again -- see clear()'s comment for why this is
+    // required, not optional, once a second benchmark round runs in this
+    // same agent process.
+    mdata->clear();
 
     go(servers, options, stats, &socket);
 
