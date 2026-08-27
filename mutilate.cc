@@ -11,6 +11,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <mutex>
 #include <queue>
 #include <string>
 #include <vector>
@@ -54,19 +55,34 @@ private:
   int threads_;
   vector<Connection*> connections_;
   vector<ConnectionStats*> stats_;
+  // connections_/stats_ are mutated from thread_main()/do_mutilate(), called
+  // once per spawned worker thread (up to DRIVER_THREADS concurrently) --
+  // without this, concurrent push_back() calls on the same vector from
+  // multiple threads is a data race (undefined behavior), which is exactly
+  // what was crashing agent processes partway through a run with no clean
+  // error message. Every method that touches either vector -- reads
+  // included, since iterating one vector while another thread push_back()s
+  // it is equally undefined -- takes this lock.
+  std::mutex mutex_;
 public:
   AppData() : lambda_(0) {}
   AppData(vector<Connection*> connections, vector<ConnectionStats*> stats) { connections_ = connections; stats_ = stats;}
 
   void set_connections(vector<Connection*> connections) {
+   std::lock_guard<std::mutex> lock(mutex_);
    for (Connection *conn : connections) { connections_.push_back(conn); }
   }
-  void set_stats(ConnectionStats *cs) { stats_.push_back(cs); }
+  void set_stats(ConnectionStats *cs) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    stats_.push_back(cs);
+  }
   void increment_iagen_shape(int val) {
+    std::lock_guard<std::mutex> lock(mutex_);
     for (Connection *conn : connections_) { conn->increment_ia_shape(val); }
   }
   void display() { std::cout << lambda_ << std::endl; }
   void display_lambdas() {
+    std::lock_guard<std::mutex> lock(mutex_);
     for (Connection *conn : connections_) { printf("threads: %d -- qps: %d -- lambda: %f -- shape: %f \n", conn->options.threads, conn->options.qps, conn->options.lambda, conn->get_ia_shape()); }
     for (ConnectionStats *cs : stats_) { printf("stats qps: %ld \n", cs->gets + cs->sets); }
   }
