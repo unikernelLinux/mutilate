@@ -144,7 +144,7 @@ public:
     return shape;
   }
 
-  virtual void increment_shape(int val) {
+  virtual void increment_shape(double val) {
     shape = shape + val;
   }
 

@@ -92,7 +92,7 @@ public:
     connections_.clear();
     stats_.clear();
   }
-  void increment_iagen_shape(int val) {
+  void increment_iagen_shape(double val) {
     std::lock_guard<std::mutex> lock(mutex_);
     for (Connection *conn : connections_) { conn->increment_ia_shape(val); }
   }
@@ -118,7 +118,7 @@ long add_cmd(monloop_t *ml, int args) {
     return MONLOOP_CMD_FAILED;
   }
   char *argstr = &(ml->line[args]);
-  int val = atoi(argstr);
+  double val = atof(argstr);
   ad->increment_iagen_shape(val);
   return MONLOOP_CMD_OK;
 }
