@@ -57,7 +57,7 @@ public:
   void timer_callback();
 
   double get_ia_shape() { return ((GPareto *)iagen)->get_shape(); };
-  void increment_ia_shape(int val) { ((GPareto *)iagen)->increment_shape(val); }
+  void increment_ia_shape(double val) { ((GPareto *)iagen)->increment_shape(val); }
 private:
   string hostname;
   string port;
