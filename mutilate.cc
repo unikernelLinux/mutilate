@@ -48,6 +48,9 @@ char random_char[2 * 1024 * 1024];  // Buffer used to generate random values.
 #ifdef HAVE_LIBZMQ
 vector<zmq::socket_t*> agent_sockets;
 zmq::context_t context(1);
+
+// Max wait for one agent reply before giving up on it (normally near-instant).
+int AGENT_RECV_TIMEOUT_MS = 30000;
 #endif
 
 struct thread_data {
@@ -86,7 +89,10 @@ void* thread_main(void *arg);
 #ifdef HAVE_LIBZMQ
 static std::string s_recv (zmq::socket_t &socket) {
   zmq::message_t message;
-  socket.recv(&message);
+  // recv() returns false on ZMQ_RCVTIMEO expiry (dead agent).
+  if (!socket.recv(&message))
+    DIE("agent did not respond within %dms -- treating this run as invalid",
+        AGENT_RECV_TIMEOUT_MS);
 
   return std::string(static_cast<char*>(message.data()), message.size());
 }
@@ -238,7 +244,9 @@ void prep_agent(const vector<string>& servers, options_t& options) {
     s->send(message);
 
     zmq::message_t rep;
-    s->recv(&rep);
+    if (!s->recv(&rep))
+      DIE("agent did not respond within %dms -- treating this run as invalid",
+          AGENT_RECV_TIMEOUT_MS);
     unsigned int num = *((int *) rep.data());
 
     sum += options.connections * (options.roundrobin ?
@@ -291,7 +299,9 @@ void finish_agent(ConnectionStats &stats) {
     AgentStats as;
     zmq::message_t message;
 
-    s->recv(&message);
+    if (!s->recv(&message))
+      DIE("agent did not respond within %dms -- treating this run as invalid",
+          AGENT_RECV_TIMEOUT_MS);
     memcpy(&as, message.data(), sizeof(as));
     stats.accumulate(as);
   }
@@ -456,6 +466,9 @@ int main(int argc, char **argv) {
   } else if (args.agent_given) {
     for (unsigned int i = 0; i < args.agent_given; i++) {
       zmq::socket_t *s = new zmq::socket_t(context, ZMQ_REQ);
+      // Bounds recv() so a dead agent DIEs this run instead of hanging forever.
+      s->setsockopt(ZMQ_RCVTIMEO, &AGENT_RECV_TIMEOUT_MS,
+                    sizeof(AGENT_RECV_TIMEOUT_MS));
       string host = string("tcp://") + string(args.agent_arg[i]) +
         string(":") + string(args.agent_port_arg);
       s->connect(host.c_str());
