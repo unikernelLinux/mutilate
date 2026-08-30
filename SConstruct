@@ -39,6 +39,7 @@ env = conf.Finish()
 
 env.Append(CFLAGS = ' -O3 -Wall -g')
 env.Append(CPPFLAGS = ' -O3 -Wall -g')
+env.Append(LINKFLAGS = ' -rdynamic')  # so backtrace_symbols_fd() can resolve our own symbols
 
 env.Command(['cmdline.cc', 'cmdline.h'], 'cmdline.ggo', 'gengetopt < $SOURCE')
 

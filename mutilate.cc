@@ -1,6 +1,8 @@
 #include <arpa/inet.h>
 #include <assert.h>
+#include <execinfo.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -422,7 +424,24 @@ string name_to_ipaddr(string host) {
   return string(ipaddr) + ":" + string(port);
 }
 
+// Dumps a backtrace to stderr on crash, then re-raises for normal fatal
+// handling. backtrace_symbols_fd (not backtrace_symbols) is used since it's
+// async-signal-safe -- no malloc inside a signal handler.
+static void crash_handler(int sig) {
+  void *bt[32];
+  int n = backtrace(bt, 32);
+  const char msg[] = "\n*** mutilate crash, backtrace: ***\n";
+  write(STDERR_FILENO, msg, sizeof(msg) - 1);
+  backtrace_symbols_fd(bt, n, STDERR_FILENO);
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
+
 int main(int argc, char **argv) {
+  signal(SIGSEGV, crash_handler);
+  signal(SIGABRT, crash_handler);
+  signal(SIGBUS, crash_handler);
+
   if (cmdline_parser(argc, argv, &args) != 0) exit(-1);
 
   for (unsigned int i = 0; i < args.verbose_given; i++)
@@ -469,6 +488,11 @@ int main(int argc, char **argv) {
       // Bounds recv() so a dead agent DIEs this run instead of hanging forever.
       s->setsockopt(ZMQ_RCVTIMEO, &AGENT_RECV_TIMEOUT_MS,
                     sizeof(AGENT_RECV_TIMEOUT_MS));
+      // Without this, DIE()'s exit() runs ~context's destructor -> zmq_ctx_term(),
+      // which blocks forever closing a socket whose peer never responds
+      // (default linger is infinite) -- confirmed via a real hang + backtrace.
+      int linger = 0;
+      s->setsockopt(ZMQ_LINGER, &linger, sizeof(linger));
       string host = string("tcp://") + string(args.agent_arg[i]) +
         string(":") + string(args.agent_port_arg);
       s->connect(host.c_str());
