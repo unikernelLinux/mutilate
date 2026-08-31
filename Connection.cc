@@ -98,6 +98,14 @@ void Connection::set_priority(int pri) {
   }
 }
 
+const char* Connection::wrap_value(int index, int length) {
+  if (length < 0) length = 0;
+  if ((size_t) length > value_buf.size()) value_buf.resize(length);
+  for (int i = 0; i < length; i++)
+    value_buf[i] = random_char[(index + i) % sizeof(random_char)];
+  return value_buf.data();
+}
+
 /**
  * Load any required test data onto the server.
  */
@@ -109,9 +117,10 @@ void Connection::start_loading() {
     if (loader_issued >= options.records) break;
     char key[256];
     int index = lrand48() % (1024 * 1024);
+    int length = valuesize->generate();
     string keystr = keygen->generate(loader_issued);
     strcpy(key, keystr.c_str());
-    issue_set(key, &random_char[index], valuesize->generate());
+    issue_set(key, wrap_value(index, length), length);
     loader_issued++;
   }
 }
@@ -127,7 +136,8 @@ void Connection::issue_something(double now) {
 
   if (drand48() < options.update) {
     int index = lrand48() % (1024 * 1024);
-    issue_set(key, &random_char[index], valuesize->generate(), now);
+    int length = valuesize->generate();
+    issue_set(key, wrap_value(index, length), length, now);
   } else {
     issue_get(key, now);
   }
@@ -414,7 +424,8 @@ void Connection::read_callback() {
           string keystr = keygen->generate(loader_issued);
           strcpy(key, keystr.c_str());
           int index = lrand48() % (1024 * 1024);
-          issue_set(key, &random_char[index], valuesize->generate());
+          int length = valuesize->generate();
+          issue_set(key, wrap_value(index, length), length);
 
           loader_issued++;
         }

@@ -11,7 +11,7 @@
 
 #define LOADER_CHUNK 1024
 
-extern char random_char[];
+extern char random_char[2 * 1024 * 1024];
 extern gengetopt_args_info args;
 
 #endif // MUTILATE_H

@@ -4,6 +4,7 @@
 
 #include <queue>
 #include <string>
+#include <vector>
 
 #include <event2/bufferevent.h>
 #include <event2/dns.h>
@@ -98,11 +99,15 @@ private:
   KeyGenerator *keygen;
   Generator *iagen;
   std::queue<Operation> op_queue;
+  std::vector<char> value_buf; // scratch space for wrap_value()
 
   // state machine functions / event processing
   void pop_op();
   void finish_op(Operation *op);
   void issue_something(double now = 0.0);
+  // Copies `length` bytes starting at random_char[index], wrapping around
+  // random_char (a fixed-size buffer) instead of reading past its end.
+  const char* wrap_value(int index, int length);
   void drive_write_machine(double now = 0.0);
 
   // request functions
