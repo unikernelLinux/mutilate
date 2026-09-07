@@ -313,6 +313,16 @@ void agent() {
 
     go(servers, options, stats, &socket);
 
+    // go() deletes this round's Connection objects internally, but until
+    // now mdata->connections_/stats_ (module-lifetime) still held pointers
+    // to them -- a live "add" from monloop landing anywhere between here
+    // and the next round's clear() (line ~312) walked freed memory. This
+    // window includes the blocking s_recv() below, so it isn't narrow --
+    // confirmed as a real crash on 2026-09-06 (all agents died here in sync,
+    // right as oscillate()'s schedule and this round's --time both ended
+    // near the same moment by design).
+    mdata->clear();
+
     AgentStats as;
 
     as.rx_bytes = stats.rx_bytes;
