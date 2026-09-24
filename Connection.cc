@@ -335,7 +335,9 @@ void Connection::drive_write_machine(double now) {
         return;
       }
 
-      issue_something(now);
+      // Latency is measured from the scheduled send time, not now, so time
+      // spent blocked on depth counts (as it would for an open-loop client).
+      issue_something(next_time);
       last_tx = now;
       stats.log_op(op_queue.size());
       next_time += iagen->generate();

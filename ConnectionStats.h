@@ -35,7 +35,7 @@ class ConnectionStats {
    // needing to know whether this is the first thing merged into a freshly
    // constructed (aggregate) ConnectionStats -- any real wall-clock
    // timestamp from get_time() will beat these on the first accumulate().
-   start(std::numeric_limits<double>::max()), stop(0.0),
+   start(std::numeric_limits<double>::max()), stop(0.0), duration(0.0),
    sampling(_sampling) {}
 
 #ifdef USE_ADAPTIVE_SAMPLER
@@ -56,7 +56,9 @@ class ConnectionStats {
   uint64_t gets, sets, get_misses;
   uint64_t skips;
 
+  // start/stop: this host's clock only. duration: longest agent window.
   double start, stop;
+  double duration;
 
   bool sampling;
 
@@ -64,8 +66,12 @@ class ConnectionStats {
   void log_set(Operation& op) { if (sampling) set_sampler.sample(op); sets++; }
   void log_op (double op)     { if (sampling)  op_sampler.sample(op); }
 
+  double elapsed() const {
+    return max(stop - start, duration);
+  }
+
   double get_qps() {
-    return (gets + sets) / (stop - start);
+    return (gets + sets) / elapsed();
   }
 
 #ifdef USE_ADAPTIVE_SAMPLER
@@ -113,14 +119,16 @@ class ConnectionStats {
     get_misses += cs.get_misses;
     skips += cs.skips;
 
-    // Same fix as accumulate(const AgentStats&) below: this is called once
-    // per local thread in go()'s pthread_join loop when options.threads >
-    // 1, so a last-write-wins assignment here would silently corrupt
-    // get_qps() to reflect only whichever thread happened to be joined
-    // last. The constructor's start/stop sentinels make min/max safe here
-    // regardless of whether this is the first thread merged in or not.
+    // This is called once per local thread in go()'s pthread_join loop
+    // when options.threads > 1, so a last-write-wins assignment here would
+    // silently corrupt get_qps() to reflect only whichever thread happened
+    // to be joined last. All local threads share one clock, so min/max of
+    // their timestamps is valid. The constructor's start/stop sentinels
+    // make this safe regardless of whether this is the first thread merged
+    // in or not.
     start = min(start, cs.start);
     stop = max(stop, cs.stop);
+    duration = max(duration, cs.duration);
   }
 
   void accumulate(const AgentStats &as) {
@@ -131,21 +139,12 @@ class ConnectionStats {
     get_misses += as.get_misses;
     skips += as.skips;
 
-    // start/stop must span the full concurrent window across the master
-    // and every agent, not just whichever one this happened to be called
-    // for last -- get_qps() divides (gets+sets) by (stop-start), so a
-    // last-write-wins assignment here silently corrupts the aggregate QPS
-    // for any multi-agent run. By the time finish_agent() (the only caller
-    // of this overload) runs, the master's own do_mutilate() has already
-    // set start/stop on this object, so it's always valid here -- just
-    // take the earliest start and latest stop across it and every agent.
-    start = min(start, as.start);
-    stop = max(stop, as.stop);
+    duration = max(duration, as.duration);
   }
 
   static void print_header() {
     printf("%-7s %7s %7s %7s %7s %7s %7s %7s %7s\n",
-           "#type", "avg", "std", "min", /*"1st",*/ "5th", "10th",
+           "#type", "avg", "min", "1st", "5th", "10th",
            "90th", "95th", "99th");
   }
 

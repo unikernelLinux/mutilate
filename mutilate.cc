@@ -216,8 +216,7 @@ void agent() {
     as.gets = stats.gets;
     as.sets = stats.sets;
     as.get_misses = stats.get_misses;
-    as.start = stats.start;
-    as.stop = stats.stop;
+    as.duration = stats.stop - stats.start;
     as.skips = stats.skips;
 
     string req = s_recv(socket);
@@ -304,6 +303,9 @@ void finish_agent(ConnectionStats &stats) {
     if (!s->recv(&message))
       DIE("agent did not respond within %dms -- treating this run as invalid",
           AGENT_RECV_TIMEOUT_MS);
+    if (message.size() != sizeof(as))
+      DIE("agent stats message is %zu bytes, expected %zu",
+          message.size(), sizeof(as));
     memcpy(&as, message.data(), sizeof(as));
     stats.accumulate(as);
   }
@@ -631,8 +633,8 @@ int main(int argc, char **argv) {
     int total = stats.gets + stats.sets;
 
     printf("\nTotal QPS = %.1f (%d / %.1fs)\n",
-           total / (stats.stop - stats.start),
-           total, stats.stop - stats.start);
+           total / stats.elapsed(),
+           total, stats.elapsed());
 
     if (args.search_given && peak_qps > 0.0)
       printf("Peak QPS  = %.1f\n", peak_qps);
@@ -647,10 +649,10 @@ int main(int argc, char **argv) {
 
     printf("RX %10" PRIu64 " bytes : %6.1f MB/s\n",
            stats.rx_bytes,
-           (double) stats.rx_bytes / 1024 / 1024 / (stats.stop - stats.start));
+           (double) stats.rx_bytes / 1024 / 1024 / stats.elapsed());
     printf("TX %10" PRIu64 " bytes : %6.1f MB/s\n",
            stats.tx_bytes,
-           (double) stats.tx_bytes / 1024 / 1024 / (stats.stop - stats.start));
+           (double) stats.tx_bytes / 1024 / 1024 / stats.elapsed());
 
     if (args.save_given) {
       printf("Saving latency samples to %s.\n", args.save_arg);

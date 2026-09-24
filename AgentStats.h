@@ -8,7 +8,8 @@ public:
   uint64_t gets, sets, get_misses;
   uint64_t skips;
 
-  double start, stop;
+  // Not start/stop: agent clocks aren't synced with the master's.
+  double duration;
 };
 
 #endif // AGENTSTATS_H
