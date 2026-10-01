@@ -217,6 +217,11 @@ void agent() {
     as.sets = stats.sets;
     as.get_misses = stats.get_misses;
     as.duration = stats.stop - stats.start;
+    as.client_lag_sum = stats.client_lag_sum;
+    as.client_lag_max = stats.client_lag_max;
+    as.depth_lag_sum = stats.depth_lag_sum;
+    as.depth_lag_max = stats.depth_lag_max;
+    as.depth_blocked = stats.depth_blocked;
     as.skips = stats.skips;
 
     string req = s_recv(socket);
@@ -602,6 +607,9 @@ int main(int argc, char **argv) {
     printf("%-7s %7s %7s %7s %7s %7s %7s %7s %7s %8s %8s\n",
            "#type", "avg", "min", "1st", "5th", "10th",
            "90th", "95th", "99th", "QPS", "target");
+    printf("%-7s %7s %7s %8s %6s %7s %7s %8s\n",
+           "#lag", "cl_avg", "cl_max", "dp_sends", "dp_pct", "dp_avg",
+           "dp_max", "target");
 
     for (int q = min; q <= max; q += step) {
       args_to_options(&options);
@@ -619,6 +627,14 @@ int main(int argc, char **argv) {
       stats.print_stats("read", stats.get_sampler, false);
       printf(" %8.1f", stats.get_qps());
       printf(" %8d\n", q);
+
+      uint64_t total = stats.gets + stats.sets;
+      printf("%-7s %7.1f %7.1f %8" PRIu64 " %6.1f %7.1f %7.1f %8d\n", "lag",
+             stats.client_lag_sum / total * 1e6, stats.client_lag_max * 1e6,
+             stats.depth_blocked, (double) stats.depth_blocked / total * 100,
+             stats.depth_blocked ?
+               stats.depth_lag_sum / stats.depth_blocked * 1e6 : 0.0,
+             stats.depth_lag_max * 1e6, q);
     }
   } else {
     go(servers, options, stats);
@@ -646,6 +662,13 @@ int main(int argc, char **argv) {
 
     printf("Skipped TXs = %" PRIu64 " (%.1f%%)\n\n", stats.skips,
            (double) stats.skips / total * 100);
+
+    printf("Client lag: avg %.1f us, max %.1f us\n",
+           stats.client_lag_sum / total * 1e6, stats.client_lag_max * 1e6);
+    printf("Depth lag: %" PRIu64 " sends (%.1f%%), avg %.1f us, max %.1f us\n\n",
+           stats.depth_blocked, (double) stats.depth_blocked / total * 100,
+           stats.depth_blocked ? stats.depth_lag_sum / stats.depth_blocked * 1e6 : 0.0,
+           stats.depth_lag_max * 1e6);
 
     printf("RX %10" PRIu64 " bytes : %6.1f MB/s\n",
            stats.rx_bytes,

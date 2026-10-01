@@ -36,6 +36,8 @@ class ConnectionStats {
    // constructed (aggregate) ConnectionStats -- any real wall-clock
    // timestamp from get_time() will beat these on the first accumulate().
    start(std::numeric_limits<double>::max()), stop(0.0), duration(0.0),
+   client_lag_sum(0.0), client_lag_max(0.0),
+   depth_lag_sum(0.0), depth_lag_max(0.0), depth_blocked(0),
    sampling(_sampling) {}
 
 #ifdef USE_ADAPTIVE_SAMPLER
@@ -60,11 +62,25 @@ class ConnectionStats {
   double start, stop;
   double duration;
 
+  // Send lag (seconds) behind schedule. See drive_write_machine().
+  double client_lag_sum, client_lag_max;
+  double depth_lag_sum, depth_lag_max;
+  uint64_t depth_blocked;
+
   bool sampling;
 
   void log_get(Operation& op) { if (sampling) get_sampler.sample(op); gets++; }
   void log_set(Operation& op) { if (sampling) set_sampler.sample(op); sets++; }
   void log_op (double op)     { if (sampling)  op_sampler.sample(op); }
+  void log_client_lag(double s) {
+    client_lag_sum += s;
+    client_lag_max = max(client_lag_max, s);
+  }
+  void log_depth_lag(double s) {
+    depth_lag_sum += s;
+    depth_lag_max = max(depth_lag_max, s);
+    depth_blocked++;
+  }
 
   double elapsed() const {
     return max(stop - start, duration);
@@ -129,6 +145,7 @@ class ConnectionStats {
     start = min(start, cs.start);
     stop = max(stop, cs.stop);
     duration = max(duration, cs.duration);
+    accumulate_lag(cs);
   }
 
   void accumulate(const AgentStats &as) {
@@ -140,6 +157,15 @@ class ConnectionStats {
     skips += as.skips;
 
     duration = max(duration, as.duration);
+    accumulate_lag(as);
+  }
+
+  template <class S> void accumulate_lag(const S &s) {
+    client_lag_sum += s.client_lag_sum;
+    client_lag_max = max(client_lag_max, s.client_lag_max);
+    depth_lag_sum += s.depth_lag_sum;
+    depth_lag_max = max(depth_lag_max, s.depth_lag_max);
+    depth_blocked += s.depth_blocked;
   }
 
   static void print_header() {

@@ -68,6 +68,7 @@ private:
   double next_time;    // Inter-transmission time parameters.
   double last_rx;      // Used to moderate transmission rate.
   double last_tx;
+  double unblocked_at = 0.0; // Last time a depth-blocked connection got a slot.
 
   enum read_state_enum {
     INIT_READ,

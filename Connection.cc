@@ -86,6 +86,7 @@ void Connection::reset() {
   evtimer_del(timer);
   read_state = IDLE;
   write_state = INIT_WRITE;
+  unblocked_at = 0.0;
   stats = ConnectionStats(stats.sampling);
 }
 
@@ -302,7 +303,7 @@ void Connection::event_callback(short events) {
 void Connection::drive_write_machine(double now) {
   if (now == 0.0) now = get_time();
 
-  double delay;
+  double delay, client_lag;
   struct timeval tv;
 
   if (check_exit_condition(now)) return;
@@ -335,9 +336,16 @@ void Connection::drive_write_machine(double now) {
         return;
       }
 
-      // Latency is measured from the scheduled send time, not now, so time
-      // spent blocked on depth counts (as it would for an open-loop client).
-      issue_something(next_time);
+      // Split send lag: time due while depth-blocked vs. time due with a
+      // free slot (client event loop fell behind).
+      client_lag = now - max(next_time, unblocked_at);
+      if (unblocked_at > next_time)
+        stats.log_depth_lag(unblocked_at - next_time);
+      stats.log_client_lag(client_lag);
+
+      // Latency includes depth lag (open-loop queueing) but not client lag,
+      // which is client overhead, not server time.
+      issue_something(next_time + client_lag);
       last_tx = now;
       stats.log_op(op_queue.size());
       next_time += iagen->generate();
@@ -367,6 +375,7 @@ void Connection::drive_write_machine(double now) {
 
     case WAITING_FOR_OPQ:
       if (op_queue.size() >= (size_t) options.depth) return;
+      unblocked_at = now;
       write_state = ISSUING;
       break;
 
