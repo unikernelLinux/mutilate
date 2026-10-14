@@ -884,6 +884,14 @@ void do_mutilate(const vector<string>& servers, options_t& options,
       options.connections;
 
     for (int c = 0; c < conns; c++) {
+      // Ramp up instead of slamming every connection in at once: a
+      // baseline (non-upcall) memcached's accept loop only re-arms on a
+      // new epoll edge for its listen socket, so a burst of connections
+      // arriving faster than one accept()-drain cycle can leave some
+      // stuck in the kernel's accept queue forever. 5ms/connection, paced
+      // per thread (every thread running this loop paces independently).
+      if (c > 0) usleep(5000);
+
       Connection* conn = new Connection(base, evdns, hostname, port, options,
                                         args.agentmode_given ? false :
                                         true);
